@@ -1,0 +1,177 @@
+---
+title: "MOOC single-cell RNA-seq"
+author: "Lorette Noiret & Nathalie Lehmann"
+date: "`r Sys.Date()`"
+output: bookdown::gitbook
+documentclass: book
+bibliography: []
+biblio-style: apalike
+link-citations: yes
+github-repo: ""
+---
+
+# Introduction
+
+```{r setup, echo=FALSE, message=FALSE}
+# Set parameters values
+knitr::opts_chunk$set(
+					  fig.align = "center",
+					  fig.retina = 2,
+					  fig.fullwidth = TRUE,
+					  dev = 'png',
+					  cache = FALSE,
+					  cache.lazy = FALSE,
+					  warning = FALSE,
+					  message = FALSE)
+```
+
+```{r load-libraries}
+library(Seurat)
+library(dplyr)
+library(scater)
+library(gridExtra)
+library(RColorBrewer)
+library(cowplot)
+library(viridis)
+library(scales)
+library(ggthemes)
+```
+
+# Chargement des données
+
+Avant d'aborder la partie dédiée aux analyses biologiques, vous devez vous assurer de récupérer un fichier avec des données filtrées et normalisées.
+Toutes les étapes de filtrage des données ont été vues au cours du chapitre 3.
+
+Nous commençons par charger les données filtrées, avec la fonction `readRDS`.
+Cette fonction permet de charger un fichier de type `rds`, format propre à R.
+A la fin des analyses, vous pourrez sauvergarder vos fichiers avec la fonction `saveRDS`.
+
+```{r save-as-rds, eval=FALSE, echo=FALSE}
+load(file = 'data/SC26_FMTG_sobj_filtered_normalized.Rda')
+obj_seurat_FMTG <- sobj
+table(obj_seurat_FMTG[[]]['orig.ident'])
+saveRDS(obj_seurat_FMTG, file = "../../data/SC26_FMTG_sobj_filtered_normalized.rds")
+#obj_seurat <- readRDS(file = "../../data/SC26_FMTG_sobj_filtered_normalized.rds")
+
+load(file = 'data/SC26_TG_sobj_filtered_normalized.Rda')
+obj_seurat_TG <- sobj
+table(obj_seurat_TG[[]]['orig.ident'])
+saveRDS(obj_seurat_TG, file = "../../data/SC26_TG_sobj_filtered_normalized.rds")
+#obj_seurat <- readRDS(file = "../../data/SC26_TG_sobj_filtered_normalized.rds")
+```
+
+```{r load-data}
+sobj <- readRDS(file = "data/SC26_TG_sobj_filtered_normalized.rds")
+#sobj <- readRDS(file = "../../data/SC26_FMTG_sobj_filtered_normalized.rds")
+```
+
+Vérifions que les étapes suivantes aient bien été effectuées sur notre jeu de données: 1) filtrage, 2) normalisation et 3) sélection des gènes variables. 
+
+## Filtrage
+
+```{r verif-objet}
+# Donne des informations générales sur le jeu de données
+sobj
+
+# On vérifie que les données normalisées sont sélectionnées par défaut
+DefaultAssay(sobj)
+
+# Montre un échantillon des métadonnées
+head(sobj@meta.data)
+```
+
+```{r verif-filtrage}
+VlnPlot(sobj, features = c("nCount_RNA", "percent_mt"), ncol = 2)
+
+ggplot(sobj@meta.data, aes_string(x = "nCount_RNA")) +
+	geom_histogram(fill = "blueviolet", alpha = 0.8, bins = 100) +
+	labs(x = "", y = "", title = "Total counts") +
+	xlim(0, max(sobj@meta.data$nCount_RNA)) +
+	theme_minimal()
+
+ggplot(sobj@meta.data, aes_string(x = "nCount_RNA")) +
+	geom_histogram(fill = "cyan4", alpha = 0.8, bins = 100) +
+	scale_x_log10() +
+	labs(x = "", y = "", title = "Total counts (log10)") +
+	theme_minimal()
+
+summary(sobj@meta.data$nCount_RNA)
+```
+
+# Réduction de dimension
+
+## PCA
+
+```{r run-pca}
+sobj <- RunPCA(sobj,
+			   features = VariableFeatures(object = sobj),
+			   verbose = FALSE,
+			   npcs = 50)
+```
+
+```{r viz-pca}
+DimPlot(sobj, reduction = "pca")
+DimPlot(sobj, reduction = "pca", group.by = "Phase")
+```
+
+## UMAP
+
+```{r run-umap}
+sobj <- FindNeighbors(sobj, dims = 1:50) %>%
+	RunUMAP(dims = 1:30)
+```
+
+```{r viz-umap}
+DimPlot(sobj, reduction = "umap")
+DimPlot(sobj, reduction = "umap", group.by = "Phase", pt.size = 0.1)
+```
+
+
+# Clustering
+
+## Introduction au clustering
+
+## Exemple de clustering
+
+```{r clustering}
+sobj <- FindClusters(sobj, resolution = 0.1)
+DimPlot(sobj, reduction = "umap")
+```
+
+
+# Analyse d'expression différentielle
+
+## Introduction à l'analyse d'expression différentielle
+
+## Exemple
+
+```{r differential-analysis}
+Idents(sobj) <- 'seurat_clusters'
+
+markers_DE <- FindAllMarkers(sobj,
+							 only.pos = TRUE,
+							 min.pct = 0.25,
+							 logfc.threshold = 0.25,
+							 test.use = "wilcox")
+
+markers_DE <- markers_DE %>% filter(p_val < 1e-2)
+```
+
+```{r top10-markers}
+top10 <- markers_DE %>%
+	filter(p_val < 1e-2) %>%
+	group_by(cluster) %>%
+	top_n(n = 10, wt = avg_log2FC)
+```
+
+```{r find-de-clusters}
+DoHeatmap(sobj,
+		  features = top10$gene,
+		  label = FALSE) +
+theme(axis.text.y = element_text(size = 4))
+```
+
+# Session info
+```{r session}
+sessionInfo()
+```
